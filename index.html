@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Center Guard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #050816;
+      touch-action: none;
+      user-select: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" aria-label="Center Guard ball blocking game"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const state = {
+      width: 0,
+      height: 0,
+      centerX: 0,
+      centerY: 0,
+      score: 0,
+      lives: 3,
+      balls: [],
+      bursts: [],
+      pointers: new Map(),
+      lastTime: 0,
+      spawnTimer: 0,
+      running: true,
+      gameOver: false,
+      elapsed: 0,
+    };
+
+    const CENTER_RADIUS = 36;
+    const BASE_SPAWN_MS = 980;
+    const MIN_SPAWN_MS = 270;
+    const BLOCK_RADIUS = 48;
+
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      state.width = window.innerWidth;
+      state.height = window.innerHeight;
+      state.centerX = state.width / 2;
+      state.centerY = state.height / 2;
+      canvas.width = Math.floor(state.width * dpr);
+      canvas.height = Math.floor(state.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function randomBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    function makeBall() {
+      const angle = Math.random() * Math.PI * 2;
+      const margin = Math.max(state.width, state.height) * 0.68;
+      const x = state.centerX + Math.cos(angle) * margin;
+      const y = state.centerY + Math.sin(angle) * margin;
+      const dx = state.centerX - x;
+      const dy = state.centerY - y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const speedBoost = Math.min(330, state.elapsed * 7.5);
+      const speed = randomBetween(115, 175) + speedBoost;
+
+      return {
+        x,
+        y,
+        vx: (dx / distance) * speed,
+        vy: (dy / distance) * speed,
+        radius: randomBetween(14, 24),
+        hue: randomBetween(175, 330),
+        spin: randomBetween(-4, 4),
+        rotation: 0,
+      };
+    }
+
+    function spawnBall() {
+      state.balls.push(makeBall());
+    }
+
+    function addBurst(x, y, hue) {
+      for (let i = 0; i < 14; i += 1) {
+        const angle = (Math.PI * 2 * i) / 14 + randomBetween(-0.2, 0.2);
+        const speed = randomBetween(75, 220);
+        state.bursts.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: randomBetween(2, 5),
+          life: 0.45,
+          maxLife: 0.45,
+          hue,
+        });
+      }
+    }
+
+    function blockAt(x, y) {
+      if (state.gameOver) {
+        resetGame();
+        return;
+      }
+
+      for (let i = state.balls.length - 1; i >= 0; i -= 1) {
+        const ball = state.balls[i];
+        const hitDistance = BLOCK_RADIUS + ball.radius;
+        if (Math.hypot(ball.x - x, ball.y - y) <= hitDistance) {
+          state.balls.splice(i, 1);
+          state.score += 10;
+          addBurst(ball.x, ball.y, ball.hue);
+        }
+      }
+    }
+
+    function resetGame() {
+      state.score = 0;
+      state.lives = 3;
+      state.balls = [];
+      state.bursts = [];
+      state.spawnTimer = 0;
+      state.elapsed = 0;
+      state.gameOver = false;
+      state.running = true;
+    }
+
+    function pointerPosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
+    }
+
+    canvas.addEventListener('pointerdown', (event) => {
+      canvas.setPointerCapture(event.pointerId);
+      const position = pointerPosition(event);
+      state.pointers.set(event.pointerId, position);
+      blockAt(position.x, position.y);
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!state.pointers.has(event.pointerId)) return;
+      const position = pointerPosition(event);
+      state.pointers.set(event.pointerId, position);
+      blockAt(position.x, position.y);
+    });
+
+    function releasePointer(event) {
+      state.pointers.delete(event.pointerId);
+    }
+
+    canvas.addEventListener('pointerup', releasePointer);
+    canvas.addEventListener('pointercancel', releasePointer);
+    window.addEventListener('resize', resizeCanvas);
+
+    function update(delta) {
+      if (state.gameOver) return;
+
+      state.elapsed += delta;
+      const spawnDelay = Math.max(MIN_SPAWN_MS, BASE_SPAWN_MS - state.elapsed * 18);
+      state.spawnTimer -= delta * 1000;
+      while (state.spawnTimer <= 0) {
+        spawnBall();
+        state.spawnTimer += spawnDelay;
+      }
+
+      for (let i = state.balls.length - 1; i >= 0; i -= 1) {
+        const ball = state.balls[i];
+        ball.x += ball.vx * delta;
+        ball.y += ball.vy * delta;
+        ball.rotation += ball.spin * delta;
+
+        if (Math.hypot(ball.x - state.centerX, ball.y - state.centerY) <= CENTER_RADIUS + ball.radius) {
+          state.balls.splice(i, 1);
+          state.lives -= 1;
+          addBurst(state.centerX, state.centerY, 8);
+          if (state.lives <= 0) {
+            state.gameOver = true;
+          }
+        }
+      }
+
+      for (let i = state.bursts.length - 1; i >= 0; i -= 1) {
+        const particle = state.bursts[i];
+        particle.life -= delta;
+        particle.x += particle.vx * delta;
+        particle.y += particle.vy * delta;
+        particle.vx *= 0.97;
+        particle.vy *= 0.97;
+        if (particle.life <= 0) {
+          state.bursts.splice(i, 1);
+        }
+      }
+    }
+
+    function drawBackground() {
+      const gradient = ctx.createRadialGradient(
+        state.centerX,
+        state.centerY,
+        20,
+        state.centerX,
+        state.centerY,
+        Math.max(state.width, state.height) * 0.75,
+      );
+      gradient.addColorStop(0, '#17234a');
+      gradient.addColorStop(1, '#040612');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, state.width, state.height);
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      for (let r = 90; r < Math.max(state.width, state.height); r += 90) {
+        ctx.beginPath();
+        ctx.arc(state.centerX, state.centerY, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    function drawCenter() {
+      ctx.save();
+      ctx.shadowColor = '#66e6ff';
+      ctx.shadowBlur = 24;
+      ctx.fillStyle = '#0bd3ff';
+      ctx.beginPath();
+      ctx.arc(state.centerX, state.centerY, CENTER_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(state.centerX, state.centerY, CENTER_RADIUS + 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawBall(ball) {
+      const gradient = ctx.createRadialGradient(
+        ball.x - ball.radius * 0.4,
+        ball.y - ball.radius * 0.4,
+        2,
+        ball.x,
+        ball.y,
+        ball.radius,
+      );
+      gradient.addColorStop(0, `hsl(${ball.hue}, 100%, 82%)`);
+      gradient.addColorStop(0.65, `hsl(${ball.hue}, 88%, 50%)`);
+      gradient.addColorStop(1, `hsl(${ball.hue}, 90%, 25%)`);
+
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(ball.rotation);
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, ball.radius * 0.72, -0.8, 1.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBursts() {
+      state.bursts.forEach((particle) => {
+        const alpha = Math.max(0, particle.life / particle.maxLife);
+        ctx.fillStyle = `hsla(${particle.hue}, 100%, 65%, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.radius * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawPointers() {
+      state.pointers.forEach((pointer) => {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(pointer.x, pointer.y, BLOCK_RADIUS, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    }
+
+    function drawHud() {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 24px Arial, Helvetica, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Points: ${state.score}`, 22, 36);
+      ctx.font = '700 20px Arial, Helvetica, sans-serif';
+      ctx.fillText(`Lives: ${'♥'.repeat(state.lives)}${'♡'.repeat(Math.max(0, 3 - state.lives))}`, 22, 66);
+
+      ctx.textAlign = 'center';
+      ctx.font = '600 16px Arial, Helvetica, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+      ctx.fillText('Touch or drag over incoming balls before they reach the center', state.centerX, state.height - 24);
+    }
+
+    function drawGameOver() {
+      if (!state.gameOver) return;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+      ctx.fillRect(0, 0, state.width, state.height);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 54px Arial, Helvetica, sans-serif';
+      ctx.fillText('Game Over', state.centerX, state.centerY - 30);
+      ctx.font = '700 24px Arial, Helvetica, sans-serif';
+      ctx.fillText(`Final points: ${state.score}`, state.centerX, state.centerY + 10);
+      ctx.font = '600 18px Arial, Helvetica, sans-serif';
+      ctx.fillText('Touch anywhere to restart', state.centerX, state.centerY + 48);
+    }
+
+    function draw() {
+      drawBackground();
+      drawCenter();
+      state.balls.forEach(drawBall);
+      drawBursts();
+      drawPointers();
+      drawHud();
+      drawGameOver();
+    }
+
+    function loop(time) {
+      const delta = Math.min(0.033, (time - state.lastTime) / 1000 || 0);
+      state.lastTime = time;
+      update(delta);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    resizeCanvas();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
