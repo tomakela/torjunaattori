@@ -54,6 +54,7 @@
       spawnTimer: 0,
       running: true,
       gameOver: false,
+      gameOverElapsed: 0,
       elapsed: 0,
     };
 
@@ -61,6 +62,7 @@
     const BASE_SPAWN_MS = 980;
     const MIN_SPAWN_MS = 270;
     const BLOCK_RADIUS = 48;
+    const MIN_SCORE_DISPLAY_SECONDS = 3;
 
     function resizeCanvas() {
       const dpr = window.devicePixelRatio || 1;
@@ -123,7 +125,9 @@
 
     function blockAt(x, y) {
       if (state.gameOver) {
-        resetGame();
+        if (state.gameOverElapsed >= MIN_SCORE_DISPLAY_SECONDS) {
+          resetGame();
+        }
         return;
       }
 
@@ -145,6 +149,7 @@
       state.bursts = [];
       state.spawnTimer = 0;
       state.elapsed = 0;
+      state.gameOverElapsed = 0;
       state.gameOver = false;
       state.running = true;
     }
@@ -180,7 +185,10 @@
     window.addEventListener('resize', resizeCanvas);
 
     function update(delta) {
-      if (state.gameOver) return;
+      if (state.gameOver) {
+        state.gameOverElapsed += delta;
+        return;
+      }
 
       state.elapsed += delta;
       const spawnDelay = Math.max(MIN_SPAWN_MS, BASE_SPAWN_MS - state.elapsed * 18);
@@ -202,6 +210,7 @@
           addBurst(state.centerX, state.centerY, 8);
           if (state.lives <= 0) {
             state.gameOver = true;
+            state.gameOverElapsed = 0;
           }
         }
       }
@@ -331,8 +340,12 @@
       ctx.fillText('Game Over', state.centerX, state.centerY - 30);
       ctx.font = '700 24px Arial, Helvetica, sans-serif';
       ctx.fillText(`Final points: ${state.score}`, state.centerX, state.centerY + 10);
+      const canRestart = state.gameOverElapsed >= MIN_SCORE_DISPLAY_SECONDS;
+      const restartMessage = canRestart
+        ? 'Touch anywhere to restart'
+        : `Score stays visible for ${Math.ceil(MIN_SCORE_DISPLAY_SECONDS - state.gameOverElapsed)} more seconds`;
       ctx.font = '600 18px Arial, Helvetica, sans-serif';
-      ctx.fillText('Touch anywhere to restart', state.centerX, state.centerY + 48);
+      ctx.fillText(restartMessage, state.centerX, state.centerY + 48);
     }
 
     function draw() {
