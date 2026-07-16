@@ -56,6 +56,7 @@
       gameOver: false,
       gameOverElapsed: 0,
       elapsed: 0,
+      themeIndex: 0,
     };
 
     const CENTER_RADIUS = 36;
@@ -63,6 +64,61 @@
     const MIN_SPAWN_MS = 270;
     const BLOCK_RADIUS = 48;
     const MIN_SCORE_DISPLAY_SECONDS = 3;
+    const POINTS_PER_THEME = 500;
+    const THEMES = [
+      {
+        backgroundInner: '#17234a',
+        backgroundOuter: '#040612',
+        centerGlow: '#66e6ff',
+        centerFill: '#0bd3ff',
+        accent: '#ffffff',
+        guide: 'rgba(255, 255, 255, 0.05)',
+        pointer: 'rgba(255, 255, 255, 0.72)',
+        hud: '#ffffff',
+        mutedHud: 'rgba(255, 255, 255, 0.72)',
+        ballHueStart: 175,
+        ballHueEnd: 330,
+      },
+      {
+        backgroundInner: '#4a1d12',
+        backgroundOuter: '#140402',
+        centerGlow: '#ffb347',
+        centerFill: '#ff6b00',
+        accent: '#fff1d6',
+        guide: 'rgba(255, 190, 120, 0.07)',
+        pointer: 'rgba(255, 230, 190, 0.76)',
+        hud: '#fff1d6',
+        mutedHud: 'rgba(255, 224, 188, 0.76)',
+        ballHueStart: 5,
+        ballHueEnd: 65,
+      },
+      {
+        backgroundInner: '#123d2f',
+        backgroundOuter: '#02120d',
+        centerGlow: '#82ff9e',
+        centerFill: '#21d66b',
+        accent: '#e6ffef',
+        guide: 'rgba(130, 255, 158, 0.07)',
+        pointer: 'rgba(214, 255, 228, 0.76)',
+        hud: '#e6ffef',
+        mutedHud: 'rgba(214, 255, 228, 0.76)',
+        ballHueStart: 95,
+        ballHueEnd: 170,
+      },
+      {
+        backgroundInner: '#2f1652',
+        backgroundOuter: '#090314',
+        centerGlow: '#e584ff',
+        centerFill: '#9b4dff',
+        accent: '#f7e8ff',
+        guide: 'rgba(229, 132, 255, 0.07)',
+        pointer: 'rgba(247, 232, 255, 0.76)',
+        hud: '#f7e8ff',
+        mutedHud: 'rgba(247, 232, 255, 0.76)',
+        ballHueStart: 265,
+        ballHueEnd: 325,
+      },
+    ];
 
     function resizeCanvas() {
       const dpr = window.devicePixelRatio || 1;
@@ -96,7 +152,7 @@
         vx: (dx / distance) * speed,
         vy: (dy / distance) * speed,
         radius: randomBetween(14, 24),
-        hue: randomBetween(175, 330),
+        hue: randomBetween(currentTheme().ballHueStart, currentTheme().ballHueEnd),
         spin: randomBetween(-4, 4),
         rotation: 0,
       };
@@ -137,6 +193,7 @@
         if (Math.hypot(ball.x - x, ball.y - y) <= hitDistance) {
           state.balls.splice(i, 1);
           state.score += 10;
+          updateTheme();
           addBurst(ball.x, ball.y, ball.hue);
         }
       }
@@ -149,6 +206,7 @@
       state.bursts = [];
       state.spawnTimer = 0;
       state.elapsed = 0;
+      state.themeIndex = 0;
       state.gameOverElapsed = 0;
       state.gameOver = false;
       state.running = true;
@@ -228,6 +286,14 @@
       }
     }
 
+    function currentTheme() {
+      return THEMES[state.themeIndex % THEMES.length];
+    }
+
+    function updateTheme() {
+      state.themeIndex = Math.floor(state.score / POINTS_PER_THEME);
+    }
+
     function drawBackground() {
       const gradient = ctx.createRadialGradient(
         state.centerX,
@@ -237,12 +303,13 @@
         state.centerY,
         Math.max(state.width, state.height) * 0.75,
       );
-      gradient.addColorStop(0, '#17234a');
-      gradient.addColorStop(1, '#040612');
+      const theme = currentTheme();
+      gradient.addColorStop(0, theme.backgroundInner);
+      gradient.addColorStop(1, theme.backgroundOuter);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, state.width, state.height);
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = theme.guide;
       ctx.lineWidth = 1;
       for (let r = 90; r < Math.max(state.width, state.height); r += 90) {
         ctx.beginPath();
@@ -253,15 +320,16 @@
 
     function drawCenter() {
       ctx.save();
-      ctx.shadowColor = '#66e6ff';
+      const theme = currentTheme();
+      ctx.shadowColor = theme.centerGlow;
       ctx.shadowBlur = 24;
-      ctx.fillStyle = '#0bd3ff';
+      ctx.fillStyle = theme.centerFill;
       ctx.beginPath();
       ctx.arc(state.centerX, state.centerY, CENTER_RADIUS, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = theme.accent;
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(state.centerX, state.centerY, CENTER_RADIUS + 8, 0, Math.PI * 2);
@@ -308,7 +376,7 @@
 
     function drawPointers() {
       state.pointers.forEach((pointer) => {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.strokeStyle = currentTheme().pointer;
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(pointer.x, pointer.y, BLOCK_RADIUS, 0, Math.PI * 2);
@@ -317,7 +385,8 @@
     }
 
     function drawHud() {
-      ctx.fillStyle = '#ffffff';
+      const theme = currentTheme();
+      ctx.fillStyle = theme.hud;
       ctx.font = '700 24px Arial, Helvetica, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(`Points: ${state.score}`, 22, 36);
@@ -326,7 +395,7 @@
 
       ctx.textAlign = 'center';
       ctx.font = '600 16px Arial, Helvetica, sans-serif';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+      ctx.fillStyle = theme.mutedHud;
       ctx.fillText('Touch or drag over incoming balls before they reach the center', state.centerX, state.height - 24);
     }
 
@@ -335,7 +404,8 @@
       ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
       ctx.fillRect(0, 0, state.width, state.height);
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff';
+      const theme = currentTheme();
+      ctx.fillStyle = theme.hud;
       ctx.font = '800 54px Arial, Helvetica, sans-serif';
       ctx.fillText('Game Over', state.centerX, state.centerY - 30);
       ctx.font = '700 24px Arial, Helvetica, sans-serif';
